@@ -26,7 +26,7 @@ RUN addgroup --system --gid 1001 nodejs && \
 
 # Copy package files
 COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy built files from builder
 COPY --from=builder --chown=expressjs:nodejs /app/dist ./dist
