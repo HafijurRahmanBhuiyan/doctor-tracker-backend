@@ -12,6 +12,10 @@ const envSchema = z.object({
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PASSWORD: z.string().optional(),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  // General API rate limit: requests per window per IP
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().default(900000), // 15 minutes
+  RATE_LIMIT_MAX: z.coerce.number().default(600),
+  // Login attempts are limited separately (stricter)
   LOGIN_RATE_LIMIT_MAX: z.coerce.number().default(20),
   SEED_DEMO_DATA: z
     .string()
