@@ -2,6 +2,7 @@ import { Router } from "express";
 import healthRoutes from "./health";
 import authRoutes from "./auth";
 import doctorRoutes from "./doctors";
+import patientRoutes from "./patients";
 import { protect, authorize } from "../middlewares/auth";
 
 const router = Router();
@@ -9,6 +10,7 @@ const router = Router();
 router.use("/health", healthRoutes);
 router.use("/auth", authRoutes);
 router.use("/doctors", doctorRoutes);
+router.use("/patients", patientRoutes);
 
 // Protect all other routes
 router.use(protect);

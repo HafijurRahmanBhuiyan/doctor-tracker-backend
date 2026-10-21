@@ -60,7 +60,11 @@ const patientSchema = new Schema<IPatient>(
   }
 );
 
-patientSchema.index({ doctor: 1 });
+// Indexes (each declared in exactly ONE place)
+patientSchema.index({ doctor: 1, createdAt: -1 });
+patientSchema.index({ condition: 1 });
+patientSchema.index({ createdAt: -1 });
+patientSchema.index({ name: "text", condition: "text" });
 
 const Patient = mongoose.model<IPatient>("Patient", patientSchema);
 

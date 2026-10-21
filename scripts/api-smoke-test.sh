@@ -1,6 +1,6 @@
 #!/bin/bash
 
-BASE_URL=${BASE_URL:-http://localhost:5000/api/v1}
+BASE_URL=${BASE_URL:-http://localhost:5001/api/v1}
 ENV_FILE="$(dirname "$0")/../.env"
 ADMIN_EMAIL=$(grep "^ADMIN_EMAIL=" "$ENV_FILE" | cut -d'=' -f2 | tr -d '[:space:]')
 ADMIN_PASSWORD=$(grep "^ADMIN_PASSWORD=" "$ENV_FILE" | cut -d'=' -f2 | tr -d '[:space:]')

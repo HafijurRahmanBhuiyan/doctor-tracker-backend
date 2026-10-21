@@ -165,7 +165,7 @@ export const updateDoctor = asyncHandler(async (req: Request, res: Response) => 
   }
 
   const doctor = await Doctor.findByIdAndUpdate(id, req.body, {
-    new: true,
+    returnDocument: "after",
     runValidators: true,
   });
 
