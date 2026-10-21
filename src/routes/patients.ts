@@ -13,6 +13,7 @@ import {
   createPatientSchema,
   updatePatientSchema,
   patientIdSchema,
+  listPatientsSchema,
 } from "../validators/patient";
 
 const router = Router();
@@ -21,7 +22,7 @@ const router = Router();
 router.use(protect);
 router.use(authorize("admin"));
 
-router.get("/", getPatients);
+router.get("/", validate(listPatientsSchema), getPatients);
 router.post("/", validate(createPatientSchema), createPatient);
 // Must be defined BEFORE /:id
 router.get("/filters/options", getPatientFilters);

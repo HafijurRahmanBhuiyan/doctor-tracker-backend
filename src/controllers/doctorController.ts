@@ -4,6 +4,7 @@ import Doctor from "../models/Doctor";
 import Patient from "../models/Patient";
 import { asyncHandler } from "../utils/asyncHandler";
 import { AppError } from "../utils/AppError";
+import { resolveDateRange } from "../utils/dateRange";
 
 export const createDoctor = asyncHandler(async (req: Request, res: Response) => {
   const { name, specialization, hospital, phone, email } = req.body;
@@ -60,12 +61,15 @@ export const getDoctors = asyncHandler(async (req: Request, res: Response) => {
   }
 
   if (from || to) {
+    // Date-only `from` / `to` are resolved by the shared helper: `from` is the
+    // start of that UTC day, `to` the end of that UTC day.
+    const range = resolveDateRange(from, to);
     query.createdAt = {};
-    if (from) {
-      query.createdAt.$gte = new Date(from);
+    if (range.from) {
+      query.createdAt.$gte = range.from;
     }
-    if (to) {
-      query.createdAt.$lte = new Date(to);
+    if (range.to) {
+      query.createdAt.$lte = range.to;
     }
   }
 

@@ -23,13 +23,21 @@ fail() {
   FAILED=$((FAILED + 1))
 }
 
+# req METHOD URL [JSON_BODY] -> sets HTTP and BODY
 req() {
-  local method="$1" url="$2" resp
+  local method="$1" url="$2" data="$3" resp
   local auth_args=()
   if [ -n "$TOKEN" ]; then
     auth_args=(-H "Authorization: Bearer $TOKEN")
   fi
-  resp=$(curl -s -w $'\n%{http_code}' -X "$method" "$url" "${auth_args[@]}")
+  if [ -n "$data" ]; then
+    resp=$(curl -s -w $'\n%{http_code}' -X "$method" "$url" \
+      -H "Content-Type: application/json" \
+      "${auth_args[@]}" \
+      -d "$data")
+  else
+    resp=$(curl -s -w $'\n%{http_code}' -X "$method" "$url" "${auth_args[@]}")
+  fi
   HTTP=$(printf '%s' "$resp" | tail -n1)
   BODY=$(printf '%s' "$resp" | sed '$d')
 }
@@ -171,6 +179,59 @@ if [ "$HTTP" = "400" ]; then
   pass "invalid date returns 400 (HTTP 400)"
 else
   fail "invalid date (expected 400, got HTTP $HTTP)"
+fi
+
+# ---------- date-only range: records created NOW are inside from=to=today ----------
+TOMORROW=$(date -u -v+1d +%Y-%m-%d 2>/dev/null || date -u -d '1 day' +%Y-%m-%d 2>/dev/null)
+RANGE_DOCTOR_EMAIL="dashboard.range@example.com"
+
+# Sweep leftovers from a previous failed run so the create always succeeds
+req GET "$BASE_URL/doctors?search=$RANGE_DOCTOR_EMAIL&limit=50"
+for ID in $(jqr '.data[]._id // empty'); do
+  curl -s -X DELETE "$BASE_URL/doctors/$ID" -H "Authorization: Bearer $TOKEN" > /dev/null 2>&1
+done
+
+req POST "$BASE_URL/doctors" "{\"name\":\"Dashboard Range Doc\",\"specialization\":\"Cardiology\",\"hospital\":\"Dashboard Range Hospital\",\"phone\":\"9090909090\",\"email\":\"$RANGE_DOCTOR_EMAIL\"}"
+RANGE_DOCTOR_ID=$(jqr '.data.doctor._id // empty')
+req POST "$BASE_URL/patients" "{\"name\":\"Dashboard Range Patient\",\"age\":33,\"gender\":\"other\",\"phone\":\"9090909091\",\"condition\":\"DashboardRangeCondition\",\"doctorId\":\"$RANGE_DOCTOR_ID\"}"
+RANGE_PATIENT_ID=$(jqr '.data.patient._id // empty')
+if [ -n "$RANGE_DOCTOR_ID" ] && [ -n "$RANGE_PATIENT_ID" ]; then
+  pass "setup: created doctor + patient now for the date range test"
+else
+  fail "setup: create doctor + patient body=$(printf '%.200s' "$BODY")"
+fi
+
+# A date-only `to` means the end of that UTC day, so the patient created now is included
+req GET "$BASE_URL/dashboard/stats?from=$TODAY&to=$TODAY"
+if [ "$HTTP" = "200" ] && printf '%s' "$BODY" | jq -e --arg day "$TODAY" \
+  '(.data.patientsOverTime | length) == 1
+   and .data.patientsOverTime[0].date == $day
+   and .data.patientsOverTime[0].count >= 1' > /dev/null 2>&1; then
+  pass "from=to=today (date-only): 1 patientsOverTime bucket for today with count >= 1"
+else
+  fail "from=to=today (date-only) body=$(printf '%.300s' "$BODY")"
+fi
+
+# from after to is rejected
+req GET "$BASE_URL/dashboard/stats?from=$TOMORROW&to=$TODAY"
+if [ "$HTTP" = "400" ]; then
+  pass "inverted range (from > to) returns 400 (HTTP 400)"
+else
+  fail "inverted range (expected 400, got HTTP $HTTP) body=$(printf '%.200s' "$BODY")"
+fi
+
+# ---------- cleanup: remove the doctor + patient created for the range test ----------
+if [ -n "$RANGE_PATIENT_ID" ]; then
+  curl -s -X DELETE "$BASE_URL/patients/$RANGE_PATIENT_ID" -H "Authorization: Bearer $TOKEN" > /dev/null 2>&1
+fi
+if [ -n "$RANGE_DOCTOR_ID" ]; then
+  curl -s -X DELETE "$BASE_URL/doctors/$RANGE_DOCTOR_ID" -H "Authorization: Bearer $TOKEN" > /dev/null 2>&1
+fi
+req GET "$BASE_URL/doctors?search=$RANGE_DOCTOR_EMAIL&limit=50"
+if [ "$HTTP" = "200" ] && [ "$(jqr '.data | length')" = "0" ]; then
+  pass "cleanup: no leftover range test doctors"
+else
+  fail "cleanup: leftover range test doctor(s) body=$(printf '%.200s' "$BODY")"
 fi
 
 # ---------- calling twice returns same totals ----------

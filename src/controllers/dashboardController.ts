@@ -3,12 +3,14 @@ import Doctor from "../models/Doctor";
 import Patient from "../models/Patient";
 import { asyncHandler } from "../utils/asyncHandler";
 import { AppError } from "../utils/AppError";
+import {
+  INVERTED_RANGE_MESSAGE,
+  resolveDateRange,
+  startOfUtcDay,
+} from "../utils/dateRange";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_RANGE_DAYS = 90;
-
-const startOfUtcDay = (d: Date): Date =>
-  new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 
 const isoDay = (d: Date): string => d.toISOString().slice(0, 10);
 const isoMonth = (d: Date): string => d.toISOString().slice(0, 7);
@@ -42,12 +44,17 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
   let rangeStart: Date | null = null;
   let rangeEnd: Date | null = null;
   if (req.query.from || req.query.to) {
-    rangeEnd = req.query.to ? new Date(req.query.to as string) : now;
-    rangeStart = req.query.from
-      ? new Date(req.query.from as string)
-      : new Date(rangeEnd.getTime() - 29 * DAY_MS);
+    // Date-only `from` / `to` are resolved by the shared helper: `from` is the
+    // start of that UTC day, `to` the end of that UTC day, so records created
+    // later that day are still part of the range.
+    const range = resolveDateRange(
+      req.query.from as string | undefined,
+      req.query.to as string | undefined
+    );
+    rangeEnd = range.to ?? now;
+    rangeStart = range.from ?? new Date(rangeEnd.getTime() - 29 * DAY_MS);
     if (rangeStart.getTime() > rangeEnd.getTime()) {
-      throw new AppError("'from' must not be after 'to'", 400);
+      throw new AppError(INVERTED_RANGE_MESSAGE, 400);
     }
     const minStart = new Date(rangeEnd.getTime() - (MAX_RANGE_DAYS - 1) * DAY_MS);
     if (rangeStart < minStart) rangeStart = minStart;

@@ -190,6 +190,27 @@ else
   fail "date filter from=tomorrow body=$(printf '%.200s' "$BODY")"
 fi
 
+# ---------- Date-only range: `to` must mean the END of that UTC day ----------
+# P1 is created NOW, so a date-only `to` = today has to include it.
+TODAY=$(date -u +%Y-%m-%d)
+TOMORROW=$(date -u -v+1d +%Y-%m-%d 2>/dev/null || date -u -d '1 day' +%Y-%m-%d 2>/dev/null)
+req GET "$BASE_URL/patients?from=$TODAY&to=$TODAY&limit=50"
+if [ "$HTTP" = "200" ] && jqt --arg p1 "$P1_ID" 'any(.data[]; ._id == $p1)'; then
+  pass "date-only from=to=today includes P1 (end-of-day semantics)"
+else
+  fail "date-only from=to=today body=$(printf '%.200s' "$BODY")"
+fi
+req GET "$BASE_URL/patients?from=$TOMORROW&to=$TOMORROW&limit=50"
+if [ "$HTTP" = "200" ] && jqt --arg p1 "$P1_ID" 'all(.data[]; ._id != $p1)'; then
+  pass "date-only from=to=tomorrow excludes P1"
+else
+  fail "date-only from=to=tomorrow body=$(printf '%.200s' "$BODY")"
+fi
+req GET "$BASE_URL/patients?from=$TOMORROW&to=$TODAY"
+assert_status "date-only inverted range (from > to)" "400"
+req GET "$BASE_URL/patients?from=not-a-date"
+assert_status "date-only invalid date" "400"
+
 # ---------- Limit capped at 50 ----------
 req GET "$BASE_URL/patients?limit=200"
 if [ "$HTTP" = "200" ]; then

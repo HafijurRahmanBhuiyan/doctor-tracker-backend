@@ -142,6 +142,27 @@ else
   fail "date filter from=tomorrow body=$(printf '%.200s' "$BODY")"
 fi
 
+# ---------- Date-only range: `to` must mean the END of that UTC day ----------
+# The smoke doctor is created NOW, so a date-only `to` = today has to include it.
+TODAY=$(date -u +%Y-%m-%d)
+TOMORROW=$(date -u -v+1d +%Y-%m-%d 2>/dev/null || date -u -d '1 day' +%Y-%m-%d 2>/dev/null)
+req GET "$BASE_URL/doctors?from=$TODAY&to=$TODAY&limit=50"
+if [ "$HTTP" = "200" ] && printf '%s' "$BODY" | jq -e --arg id "$DOC_ID" 'any(.data[]; ._id == $id)' > /dev/null 2>&1; then
+  pass "date-only from=to=today includes the smoke doctor (end-of-day semantics)"
+else
+  fail "date-only from=to=today body=$(printf '%.200s' "$BODY")"
+fi
+req GET "$BASE_URL/doctors?from=$TOMORROW&to=$TOMORROW&limit=50"
+if [ "$HTTP" = "200" ] && printf '%s' "$BODY" | jq -e --arg id "$DOC_ID" 'all(.data[]; ._id != $id)' > /dev/null 2>&1; then
+  pass "date-only from=to=tomorrow excludes the smoke doctor"
+else
+  fail "date-only from=to=tomorrow body=$(printf '%.200s' "$BODY")"
+fi
+req GET "$BASE_URL/doctors?from=$TOMORROW&to=$TODAY"
+assert_status "date-only inverted range (from > to)" "400"
+req GET "$BASE_URL/doctors?from=not-a-date"
+assert_status "date-only invalid date" "400"
+
 # ---------- Limit > 50 capped ----------
 req GET "$BASE_URL/doctors?limit=100"
 if [ "$HTTP" = "200" ]; then

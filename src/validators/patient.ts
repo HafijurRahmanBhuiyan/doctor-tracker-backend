@@ -1,7 +1,14 @@
 import { z } from "zod";
+import { dateRangeQuerySchema } from "../utils/dateRange";
 
 const objectIdRegex = /^[0-9a-fA-F]{24}$/;
 const genderEnum = z.enum(["male", "female", "other"]);
+
+// Query schema for GET /patients: the `from` / `to` range is validated by the
+// shared date range schema (invalid dates and inverted ranges -> 400).
+export const listPatientsSchema = z.object({
+  query: dateRangeQuerySchema,
+});
 
 export const createPatientSchema = z.object({
   body: z.object({

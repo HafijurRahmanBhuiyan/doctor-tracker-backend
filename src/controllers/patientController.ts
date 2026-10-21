@@ -4,6 +4,7 @@ import Patient from "../models/Patient";
 import Doctor from "../models/Doctor";
 import { asyncHandler } from "../utils/asyncHandler";
 import { AppError } from "../utils/AppError";
+import { resolveDateRange } from "../utils/dateRange";
 
 const PATIENT_SORT_WHITELIST = ["createdAt", "name", "age", "condition"] as const;
 const DOCTOR_POPULATE = { path: "doctor", select: "name specialization" };
@@ -47,9 +48,12 @@ export const getPatients = asyncHandler(async (req: Request, res: Response) => {
     query.gender = gender;
   }
   if (from || to) {
+    // Date-only `from` / `to` are resolved by the shared helper: `from` is the
+    // start of that UTC day, `to` the end of that UTC day.
+    const range = resolveDateRange(from, to);
     query.createdAt = {};
-    if (from) query.createdAt.$gte = new Date(from);
-    if (to) query.createdAt.$lte = new Date(to);
+    if (range.from) query.createdAt.$gte = range.from;
+    if (range.to) query.createdAt.$lte = range.to;
   }
 
   const skip = (page - 1) * limit;

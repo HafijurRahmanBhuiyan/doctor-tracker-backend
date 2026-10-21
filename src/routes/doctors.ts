@@ -19,6 +19,7 @@ import {
   createPatientSchema,
   deletePatientSchema,
   listPatientsSchema,
+  listDoctorsSchema,
 } from "../validators/doctor";
 
 const router = Router();
@@ -28,7 +29,7 @@ router.use(protect);
 router.use(authorize("admin"));
 
 router.post("/", validate(createDoctorSchema), createDoctor);
-router.get("/", getDoctors);
+router.get("/", validate(listDoctorsSchema), getDoctors);
 router.get("/filters/options", getDoctorFilters); // define this route BEFORE /:id
 router.get("/:id", validate(doctorIdSchema), getDoctor);
 router.put("/:id", validate(updateDoctorSchema), updateDoctor);
