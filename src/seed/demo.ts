@@ -102,15 +102,35 @@ const lastNames = [
   "Talukder",
 ];
 
-const conditionsBySpec: Record<string, string[]> = {
-  Cardiology: ["Hypertension", "Arrhythmia", "Heart Failure", "Angina"],
-  Neurology: ["Migraine", "Epilepsy", "Stroke Recovery", "Neuropathy"],
-  Orthopedics: ["Fracture", "Arthritis", "Back Pain", "Knee Injury"],
-  Pediatrics: ["Fever", "Asthma", "Growth Concern", "Infection"],
-  Dermatology: ["Eczema", "Psoriasis", "Acne", "Allergy"],
-  Gynecology: ["PCOS", "Anemia", "Pregnancy Care", "Fibroid"],
-  ENT: ["Sinusitis", "Tinnitus", "Hearing Loss", "Throat Infection"],
-  Oncology: ["Breast Cancer", "Leukemia", "Chemotherapy Care", "Tumor Review"],
+// ~12 conditions, weighted so the top 6 cover well over 70% of patients.
+// Each condition fits the doctor's specialization. Weights are per-doctor
+// (9:1 within a specialization -> dominant condition gets ~90% of that
+// doctor's patients); actual totals scale with patients-per-doctor.
+// Expected split over 150 patients:
+//   Hypertension ~24, Migraine ~23, Fracture ~19, Fever ~17, Acne ~16,
+//   PCOS ~16, Sinusitis ~16, Tumor Review ~10, and ~2 each of
+//   Arrhythmia, Back Pain, Asthma, Eczema  -> top 6 ~= 76%
+const weightedConditionsBySpec: Record<string, [string, number][]> = {
+  Cardiology: [
+    ["Hypertension", 9],
+    ["Arrhythmia", 1],
+  ],
+  Neurology: [["Migraine", 9]],
+  Orthopedics: [
+    ["Fracture", 9],
+    ["Back Pain", 1],
+  ],
+  Pediatrics: [
+    ["Fever", 9],
+    ["Asthma", 1],
+  ],
+  Dermatology: [
+    ["Acne", 9],
+    ["Eczema", 1],
+  ],
+  Gynecology: [["PCOS", 9]],
+  ENT: [["Sinusitis", 9]],
+  Oncology: [["Tumor Review", 9]],
 };
 
 // uneven patient distribution across the 15 doctors (sum ~150)
@@ -118,6 +138,16 @@ const patientCounts = [18, 15, 14, 13, 12, 11, 11, 10, 9, 8, 7, 6, 6, 5, 5];
 
 const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 const pick = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+
+const pickWeighted = (entries: [string, number][]): string => {
+  const total = entries.reduce((sum, [, w]) => sum + w, 0);
+  let r = Math.random() * total;
+  for (const [value, w] of entries) {
+    r -= w;
+    if (r <= 0) return value;
+  }
+  return entries[entries.length - 1][0];
+};
 
 const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000);
 
@@ -153,7 +183,7 @@ function buildPatients(doctors: any[]) {
   const patients: any[] = [];
   doctors.forEach((doc, i) => {
     const count = patientCounts[i] ?? 5;
-    const conds = conditionsBySpec[doc.specialization] ?? ["General Checkup"];
+    const conds = weightedConditionsBySpec[doc.specialization] ?? [["General Checkup", 1]] as [string, number][];
     for (let j = 0; j < count; j++) {
       const firstName = pick(firstNames);
       const lastName = pick(lastNames);
@@ -166,7 +196,7 @@ function buildPatients(doctors: any[]) {
         gender,
         phone: `01${rand(100000000, 999999999)}`,
         email: Math.random() > 0.3 ? `${firstName.toLowerCase()}.${lastName.toLowerCase()}${rand(1, 999)}@example.com` : undefined,
-        condition: pick(conds),
+        condition: pickWeighted(conds),
         notes: Math.random() > 0.7 ? "Follow-up recommended" : undefined,
         doctor: doc._id,
         createdAt,
