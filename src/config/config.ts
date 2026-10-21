@@ -12,6 +12,7 @@ const envSchema = z.object({
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PASSWORD: z.string().optional(),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  LOGIN_RATE_LIMIT_MAX: z.coerce.number().default(20),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -11,6 +11,8 @@ import { rateLimiter } from "./middlewares/rateLimiter";
 
 const app = express();
 
+app.set("trust proxy", 1);
+
 // Security middlewares
 app.use(helmet());
 app.use(
