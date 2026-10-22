@@ -8,7 +8,10 @@ const envSchema = z.object({
   MONGO_URI: z.string().url(),
   JWT_SECRET: z.string().min(1),
   JWT_EXPIRES_IN: z.string().min(1),
-  CLIENT_URL: z.string().url(),
+  CLIENT_URL: z
+    .string()
+    .transform((value) => value.split(",").map((origin) => origin.trim()).filter(Boolean))
+    .pipe(z.array(z.string().url()).min(1, "CLIENT_URL must contain at least one valid origin")),
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PASSWORD: z.string().optional(),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),

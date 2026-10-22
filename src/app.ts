@@ -17,7 +17,9 @@ app.set("trust proxy", 1);
 app.use(helmet());
 app.use(
   cors({
-    origin: config.CLIENT_URL,
+    origin: (origin, callback) => {
+      callback(null, !origin || config.CLIENT_URL.includes(origin));
+    },
     credentials: true,
   })
 );
