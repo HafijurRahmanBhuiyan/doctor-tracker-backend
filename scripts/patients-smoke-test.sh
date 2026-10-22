@@ -59,6 +59,8 @@ jqr() {
   printf '%s' "$BODY" | jq -r "$1" 2>/dev/null
 }
 
+urlencode() { jq -rn --arg value "$1" '$value | @uri'; }
+
 TOKEN=""
 DOC_A_ID=""
 DOC_B_ID=""
@@ -138,6 +140,23 @@ if [ "$HTTP" = "200" ] && jqt --arg p1 "$P1_ID" --arg p2 "$P2_ID" \
 else
   fail "search by name body=$(printf '%.200s' "$BODY")"
 fi
+for Q in alpha ALPHA alph; do
+  ENCODED=$(urlencode "$Q")
+  req GET "$BASE_URL/patients?search=$ENCODED&limit=50"
+  if [ "$HTTP" = "200" ] && jqt --arg p1 "$P1_ID" 'any(.data[]; ._id == $p1)'; then
+    pass "patient search '$Q' finds newly created P1"
+  else
+    fail "patient search '$Q' body=$(printf '%.200s' "$BODY")"
+  fi
+done
+req GET "$BASE_URL/patients?search=lpha&limit=50"
+if [ "$HTTP" = "200" ] && jqt --arg p1 "$P1_ID" 'all(.data[]; ._id != $p1)'; then
+  pass "intentional word-prefix matching: mid-word 'lpha' does not find P1"
+else
+  fail "intentional mid-word patient search unexpectedly found P1 (HTTP $HTTP)"
+fi
+req GET "$BASE_URL/patients?search=Alpha%20PatientsSmokeFlu&limit=50"
+if [ "$HTTP" = "200" ] && jqt --arg p1 "$P1_ID" 'any(.data[]; ._id == $p1)'; then pass "multi-word search ANDs terms across patient fields"; else fail "multi-word search body=$(printf '%.200s' "$BODY")"; fi
 
 # ---------- Search by condition returns the right patient ----------
 req GET "$BASE_URL/patients?search=$COND_B&limit=50"
@@ -251,12 +270,16 @@ else
 fi
 
 # ---------- Update (verify persisted with GET) ----------
-req PUT "$BASE_URL/patients/$P1_ID" "{\"condition\":\"$COND_UPDATED\"}"
-if [ "$HTTP" = "200" ] && jqt --arg c "$COND_UPDATED" '.data.patient.condition == $c'; then
-  pass "update patient returns updated condition"
+req PUT "$BASE_URL/patients/$P1_ID" "{\"name\":\"Renamed Unique Patient\",\"condition\":\"$COND_UPDATED\"}"
+if [ "$HTTP" = "200" ] && jqt --arg c "$COND_UPDATED" '.data.patient.name == "Renamed Unique Patient" and .data.patient.condition == $c'; then
+  pass "update patient returns renamed patient and updated condition"
 else
   fail "update patient body=$(printf '%.200s' "$BODY")"
 fi
+req GET "$BASE_URL/patients?search=Renamed%20Unique&limit=50"
+if [ "$HTTP" = "200" ] && jqt --arg p1 "$P1_ID" 'any(.data[]; ._id == $p1)'; then pass "search after patient rename finds the new name"; else fail "new patient name search body=$(printf '%.200s' "$BODY")"; fi
+req GET "$BASE_URL/patients?search=Alpha&limit=50"
+if [ "$HTTP" = "200" ] && jqt --arg p1 "$P1_ID" 'all(.data[]; ._id != $p1)'; then pass "search after patient rename no longer finds the old name"; else fail "old patient name search body=$(printf '%.200s' "$BODY")"; fi
 req GET "$BASE_URL/patients/$P1_ID"
 if [ "$HTTP" = "200" ] && jqt --arg c "$COND_UPDATED" '.data.patient.condition == $c'; then
   pass "update persisted (GET shows new condition)"
@@ -277,12 +300,21 @@ if [ "$HTTP" = "200" ] && jqt --arg d "$DOC_B_ID" '.data.patient.doctor._id == $
 else
   fail "reassign persisted body=$(printf '%.200s' "$BODY")"
 fi
-req GET "$BASE_URL/patients?doctor=$DOC_B_ID&search=Alpha%20Smoke%20Patient&limit=50"
+req GET "$BASE_URL/patients?doctor=$DOC_B_ID&search=Renamed%20Unique&limit=50"
 if [ "$HTTP" = "200" ] && jqt --arg p1 "$P1_ID" 'any(.data[]; ._id == $p1)'; then
   pass "P1 now shows under doctor B list"
 else
   fail "P1 under doctor B list body=$(printf '%.200s' "$BODY")"
 fi
+for Q in 'a.b(' '[' '*' '\'; do
+  ENCODED=$(urlencode "$Q")
+  req GET "$BASE_URL/patients?search=$ENCODED"
+  assert_status "patient punctuation search '$Q' is safe" "200"
+done
+LONG_QUERY=$(printf '%0500d' 0 | tr '0' 'x')
+ENCODED=$(urlencode "$LONG_QUERY")
+req GET "$BASE_URL/patients?search=$ENCODED"
+if [ "$HTTP" = "200" ] || [ "$HTTP" = "400" ]; then pass "500-character patient search is bounded (HTTP $HTTP)"; else fail "500-character patient search returned HTTP $HTTP"; fi
 
 # ---------- filters/options includes the test conditions ----------
 req GET "$BASE_URL/patients/filters/options"

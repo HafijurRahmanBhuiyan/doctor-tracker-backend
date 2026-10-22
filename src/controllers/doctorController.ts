@@ -5,6 +5,7 @@ import Patient from "../models/Patient";
 import { asyncHandler } from "../utils/asyncHandler";
 import { AppError } from "../utils/AppError";
 import { resolveDateRange } from "../utils/dateRange";
+import { searchQueryPatterns, searchTokens } from "../utils/searchTokens";
 
 export const createDoctor = asyncHandler(async (req: Request, res: Response) => {
   const { name, specialization, hospital, phone, email } = req.body;
@@ -45,11 +46,9 @@ export const getDoctors = asyncHandler(async (req: Request, res: Response) => {
   const query: any = {};
 
   if (search) {
-    // Use text search when possible, fallback to regex
-    query.$or = [
-      { name: { $regex: search, $options: "i" } },
-      { email: { $regex: search, $options: "i" } },
-    ];
+    const patterns = searchQueryPatterns(search);
+    if (patterns === null) throw new AppError("Search must be at most 200 characters and 8 words", 400);
+    if (patterns.length) query.searchTokens = { $all: patterns };
   }
 
   if (specialization) {
@@ -77,6 +76,7 @@ export const getDoctors = asyncHandler(async (req: Request, res: Response) => {
 
   const [doctors, total] = await Promise.all([
     Doctor.find(query)
+      .select("_id name specialization hospital phone email createdAt updatedAt")
       .sort({ [sortBy]: order })
       .skip(skip)
       .limit(limit)
@@ -89,7 +89,7 @@ export const getDoctors = asyncHandler(async (req: Request, res: Response) => {
   const patientCounts = await Patient.aggregate([
     { $match: { doctor: { $in: doctorIds } } },
     { $group: { _id: "$doctor", count: { $sum: 1 } } },
-  ]);
+  ]).hint({ doctor: 1, createdAt: -1 });
 
   const countMap = new Map(patientCounts.map((pc) => [pc._id.toString(), pc.count]));
 
@@ -168,6 +168,17 @@ export const updateDoctor = asyncHandler(async (req: Request, res: Response) => 
     req.body.email = req.body.email.toLowerCase();
   }
 
+  const currentDoctor = await Doctor.findById(id).select("name specialization hospital phone email").lean();
+  if (!currentDoctor) throw new AppError("Doctor not found", 404);
+  const nextDoctor = { ...currentDoctor, ...req.body };
+  req.body.searchTokens = searchTokens(
+    nextDoctor.name,
+    nextDoctor.email,
+    nextDoctor.phone,
+    nextDoctor.specialization,
+    nextDoctor.hospital
+  );
+
   const doctor = await Doctor.findByIdAndUpdate(id, req.body, {
     returnDocument: "after",
     runValidators: true,
@@ -227,16 +238,22 @@ export const getDoctorPatients = asyncHandler(async (req: Request, res: Response
   const query: any = { doctor: id };
 
   if (search) {
-    query.$or = [
-      { name: { $regex: search, $options: "i" } },
-      { condition: { $regex: search, $options: "i" } },
-    ];
+    const patterns = searchQueryPatterns(search);
+    if (patterns === null) throw new AppError("Search must be at most 200 characters and 8 words", 400);
+    if (patterns.length) {
+      query.searchTokens = { $all: patterns };
+    }
   }
 
   const skip = (page - 1) * limit;
 
   const [patients, total] = await Promise.all([
-    Patient.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    Patient.find(query)
+      .select("_id name age gender phone email condition notes doctor createdAt updatedAt")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
     Patient.countDocuments(query),
   ]);
 

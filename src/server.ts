@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { config } from "./config/config";
 import { seedAdmin } from "./seed/admin";
 import { seedDemo } from "./seed/demo";
+import { backfillSearchTokens } from "./utils/searchTokenBackfill";
 
 const startServer = async () => {
   try {
@@ -10,6 +11,12 @@ const startServer = async () => {
     console.log("MongoDB connected");
 
     await seedAdmin();
+
+    const backfill = await backfillSearchTokens();
+    const backfilled = backfill.doctors + backfill.patients;
+    if (backfilled > 0) {
+      console.log(`Backfilled search tokens for ${backfill.doctors} doctors and ${backfill.patients} patients`);
+    }
 
     if (config.SEED_DEMO_DATA) {
       await seedDemo(false); // only seeds if zero doctors exist

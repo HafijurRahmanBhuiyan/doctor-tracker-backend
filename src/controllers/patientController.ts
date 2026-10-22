@@ -5,6 +5,7 @@ import Doctor from "../models/Doctor";
 import { asyncHandler } from "../utils/asyncHandler";
 import { AppError } from "../utils/AppError";
 import { resolveDateRange } from "../utils/dateRange";
+import { searchQueryPatterns } from "../utils/searchTokens";
 
 const PATIENT_SORT_WHITELIST = ["createdAt", "name", "age", "condition"] as const;
 const DOCTOR_POPULATE = { path: "doctor", select: "name specialization" };
@@ -29,10 +30,9 @@ export const getPatients = asyncHandler(async (req: Request, res: Response) => {
   const query: any = {};
 
   if (search) {
-    query.$or = [
-      { name: { $regex: search, $options: "i" } },
-      { condition: { $regex: search, $options: "i" } },
-    ];
+    const patterns = searchQueryPatterns(search);
+    if (patterns === null) throw new AppError("Search must be at most 200 characters and 8 words", 400);
+    if (patterns.length) query.searchTokens = { $all: patterns };
   }
   if (condition) query.condition = condition;
   if (doctor) {
@@ -60,6 +60,7 @@ export const getPatients = asyncHandler(async (req: Request, res: Response) => {
 
   const [patients, total] = await Promise.all([
     Patient.find(query)
+      .select("_id name age gender phone email condition doctor createdAt updatedAt")
       .populate(DOCTOR_POPULATE)
       .sort({ [sortBy]: order })
       .skip(skip)

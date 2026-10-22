@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema, Types } from "mongoose";
+import { searchTokens } from "../utils/searchTokens";
 
 export interface IPatient extends Document {
   name: string;
@@ -9,6 +10,7 @@ export interface IPatient extends Document {
   condition: string;
   notes?: string;
   doctor: Types.ObjectId;
+  searchTokens: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,6 +56,7 @@ const patientSchema = new Schema<IPatient>(
       ref: "Doctor",
       required: [true, "Doctor is required"],
     },
+    searchTokens: { type: [String], select: false },
   },
   {
     timestamps: true,
@@ -62,9 +65,17 @@ const patientSchema = new Schema<IPatient>(
 
 // Indexes (each declared in exactly ONE place)
 patientSchema.index({ doctor: 1, createdAt: -1 });
-patientSchema.index({ condition: 1 });
+patientSchema.index({ gender: 1, createdAt: -1 });
 patientSchema.index({ createdAt: -1 });
-patientSchema.index({ name: "text", condition: "text" });
+patientSchema.index({ name: 1 });
+patientSchema.index({ searchTokens: 1, createdAt: -1 });
+patientSchema.index({ age: 1 });
+patientSchema.index({ condition: 1, createdAt: -1 });
+patientSchema.index({ doctor: 1, searchTokens: 1, createdAt: -1 });
+
+patientSchema.pre("validate", function () {
+  this.searchTokens = searchTokens(this.name, this.email, this.phone, this.condition);
+});
 
 const Patient = mongoose.model<IPatient>("Patient", patientSchema);
 

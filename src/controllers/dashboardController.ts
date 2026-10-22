@@ -110,10 +110,10 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
     genderAgg,
     recentPatientsRaw,
   ] = await Promise.all([
-    Doctor.countDocuments(),
-    Patient.countDocuments(),
-    Patient.countDocuments({ createdAt: { $gte: last7Start } }),
-    Patient.countDocuments({ createdAt: { $gte: last30Start } }),
+    Doctor.countDocuments().hint({ _id: 1 }),
+    Patient.countDocuments().hint({ _id: 1 }),
+    Patient.countDocuments({ createdAt: { $gte: last7Start } }).hint({ createdAt: -1 }),
+    Patient.countDocuments({ createdAt: { $gte: last30Start } }).hint({ createdAt: -1 }),
     Patient.aggregate([
       { $group: { _id: "$doctor", count: { $sum: 1 } } },
       { $sort: { count: -1 } },
@@ -136,7 +136,7 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
           count: 1,
         },
       },
-    ]),
+    ]).hint({ doctor: 1, createdAt: -1 }),
     Patient.aggregate([
       {
         $match: {
@@ -149,7 +149,7 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
           count: { $sum: 1 },
         },
       },
-    ]),
+    ]).hint({ createdAt: -1 }),
     Doctor.aggregate([
       { $match: { createdAt: { $gte: sixMonthsStart } } },
       {
@@ -158,31 +158,33 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
           count: { $sum: 1 },
         },
       },
-    ]),
+    ]).hint({ createdAt: -1 }),
     Patient.aggregate([
       ...(rangeStart
         ? [{ $match: { createdAt: { $gte: rangeStart, $lte: rangeEnd } } }]
         : []),
       { $group: { _id: "$condition", count: { $sum: 1 } } },
       { $sort: { count: -1, _id: 1 } },
-    ]),
+    ]).hint(rangeStart ? { createdAt: -1 } : { condition: 1, createdAt: -1 }),
     Patient.aggregate([
       ...(rangeStart
         ? [{ $match: { createdAt: { $gte: rangeStart, $lte: rangeEnd } } }]
         : []),
-      { $lookup: { from: "doctors", localField: "doctor", foreignField: "_id", as: "doc" } },
+      { $group: { _id: "$doctor", count: { $sum: 1 } } },
+      { $lookup: { from: "doctors", localField: "_id", foreignField: "_id", as: "doc" } },
       { $unwind: "$doc" },
-      { $group: { _id: "$doc.specialization", count: { $sum: 1 } } },
+      { $group: { _id: "$doc.specialization", count: { $sum: "$count" } } },
       { $sort: { count: -1, _id: 1 } },
-    ]),
+    ]).hint(rangeStart ? { createdAt: -1 } : { doctor: 1, createdAt: -1 }),
     Patient.aggregate([
       ...(rangeStart
         ? [{ $match: { createdAt: { $gte: rangeStart, $lte: rangeEnd } } }]
         : []),
       { $group: { _id: "$gender", count: { $sum: 1 } } },
       { $sort: { count: -1, _id: 1 } },
-    ]),
+    ]).hint(rangeStart ? { createdAt: -1 } : { gender: 1, createdAt: -1 }),
     Patient.find()
+      .select("_id name condition doctor createdAt")
       .sort({ createdAt: -1 })
       .limit(5)
       .populate("doctor", "name")

@@ -53,6 +53,8 @@ assert_status() {
   fi
 }
 
+urlencode() { jq -rn --arg value "$1" '$value | @uri'; }
+
 # assert_true NAME (run a jq -e test on $BODY afterwards via explicit ifs)
 
 TOKEN=""
@@ -76,7 +78,7 @@ else
 fi
 
 # ---------- Create doctor A ----------
-req POST "$BASE_URL/doctors" '{"name":"Smoke Test Doc","specialization":"Cardiology","hospital":"Smoke Hospital","phone":"1111111111","email":"smoke.test.doc@example.com"}'
+req POST "$BASE_URL/doctors" '{"name":"OldUnique Smoke Test Doc","specialization":"Cardiology","hospital":"Smoke Hospital","phone":"1111111111","email":"smoke.test.doc@example.com"}'
 assert_status "create doctor" "201"
 DOC_ID=$(printf '%s' "$BODY" | jq -r '.data.doctor._id // empty')
 if [ -n "$DOC_ID" ] && [ "$(printf '%s' "$BODY" | jq -r '.data.doctor.email')" = "smoke.test.doc@example.com" ] \
@@ -108,6 +110,21 @@ if [ "$HTTP" = "200" ] && printf '%s' "$BODY" | jq -e --arg id "$DOC_ID" '(.data
   pass "search: >=1 item and smoke doctor included"
 else
   fail "search content body=$(printf '%.200s' "$BODY")"
+fi
+for Q in smoke SMOKE smok; do
+  ENCODED=$(urlencode "$Q")
+  req GET "$BASE_URL/doctors?search=$ENCODED&limit=50"
+  if [ "$HTTP" = "200" ] && printf '%s' "$BODY" | jq -e --arg id "$DOC_ID" 'any(.data[]; ._id == $id)' > /dev/null 2>&1; then
+    pass "doctor search '$Q' finds newly created doctor"
+  else
+    fail "doctor search '$Q' body=$(printf '%.200s' "$BODY")"
+  fi
+done
+req GET "$BASE_URL/doctors?search=mok&limit=50"
+if [ "$HTTP" = "200" ] && printf '%s' "$BODY" | jq -e --arg id "$DOC_ID" 'all(.data[]; ._id != $id)' > /dev/null 2>&1; then
+  pass "intentional word-prefix matching: mid-word 'mok' does not find this doctor"
+else
+  fail "intentional mid-word doctor search unexpectedly found the smoke doctor (HTTP $HTTP)"
 fi
 
 # ---------- Specialization filter: every doctor has that specialization ----------
@@ -194,12 +211,25 @@ else
 fi
 
 # ---------- Update doctor ----------
-req PUT "$BASE_URL/doctors/$DOC_ID" '{"hospital":"Updated Hospital"}'
-if [ "$HTTP" = "200" ] && printf '%s' "$BODY" | jq -e '.data.doctor.hospital == "Updated Hospital"' > /dev/null 2>&1; then
-  pass "update doctor returns updated hospital"
+req PUT "$BASE_URL/doctors/$DOC_ID" '{"name":"Renamed Smoke Doc","hospital":"Updated Hospital"}'
+if [ "$HTTP" = "200" ] && printf '%s' "$BODY" | jq -e '.data.doctor.name == "Renamed Smoke Doc" and .data.doctor.hospital == "Updated Hospital"' > /dev/null 2>&1; then
+  pass "update doctor returns renamed doctor and updated hospital"
 else
   fail "update doctor content body=$(printf '%.200s' "$BODY")"
 fi
+req GET "$BASE_URL/doctors?search=Renamed%20Smoke&limit=50"
+if [ "$HTTP" = "200" ] && printf '%s' "$BODY" | jq -e --arg id "$DOC_ID" 'any(.data[]; ._id == $id)' > /dev/null 2>&1; then pass "search after rename finds the new doctor name"; else fail "new doctor name search body=$(printf '%.200s' "$BODY")"; fi
+req GET "$BASE_URL/doctors?search=OldUnique&limit=50"
+if [ "$HTTP" = "200" ] && printf '%s' "$BODY" | jq -e --arg id "$DOC_ID" 'all(.data[]; ._id != $id)' > /dev/null 2>&1; then pass "search after rename no longer finds the old doctor name"; else fail "old doctor name search body=$(printf '%.200s' "$BODY")"; fi
+for Q in 'a.b(' '[' '*' '\'; do
+  ENCODED=$(urlencode "$Q")
+  req GET "$BASE_URL/doctors?search=$ENCODED"
+  assert_status "doctor punctuation search '$Q' is safe" "200"
+done
+LONG_QUERY=$(printf '%0500d' 0 | tr '0' 'x')
+ENCODED=$(urlencode "$LONG_QUERY")
+req GET "$BASE_URL/doctors?search=$ENCODED"
+if [ "$HTTP" = "200" ] || [ "$HTTP" = "400" ]; then pass "500-character doctor search is bounded (HTTP $HTTP)"; else fail "500-character doctor search returned HTTP $HTTP"; fi
 
 # ---------- Invalid / unknown / no token ----------
 req GET "$BASE_URL/doctors/invalidid"

@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Doctor from "../models/Doctor";
 import Patient from "../models/Patient";
 import { config } from "../config/config";
+import { searchTokens } from "../utils/searchTokens";
 
 // ---------- realistic BD data ----------
 const specializations = [
@@ -167,12 +168,14 @@ function buildDoctors() {
     }
     usedEmails.add(email);
     const createdAt = daysAgo(rand(0, 179)); // spread over last ~6 months
+    const phone = `01${rand(100000000, 999999999)}`;
     return {
       name,
       specialization: spec,
       hospital: hospitals[i % hospitals.length],
-      phone: `01${rand(100000000, 999999999)}`,
+      phone,
       email,
+      searchTokens: searchTokens(name, email, phone, spec, hospitals[i % hospitals.length]),
       createdAt,
       updatedAt: createdAt,
     };
@@ -194,7 +197,7 @@ function buildPatients(doctors: any[]) {
         name: `${firstName} ${lastName}`,
         age,
         gender,
-        phone: `01${rand(100000000, 999999999)}`,
+      phone: `01${rand(100000000, 999999999)}`,
         email: Math.random() > 0.3 ? `${firstName.toLowerCase()}.${lastName.toLowerCase()}${rand(1, 999)}@example.com` : undefined,
         condition: pickWeighted(conds),
         notes: Math.random() > 0.7 ? "Follow-up recommended" : undefined,
@@ -202,6 +205,8 @@ function buildPatients(doctors: any[]) {
         createdAt,
         updatedAt: createdAt,
       });
+      const patient = patients[patients.length - 1];
+      patient.searchTokens = searchTokens(patient.name, patient.email, patient.phone, patient.condition);
     }
   });
   return patients;
