@@ -6,8 +6,8 @@ The backend is an Express and TypeScript REST API for the admin portal. It valid
 
 **Live demo**
 
-- Frontend: `<LIVE_FRONTEND_URL>`
-- Backend: `<LIVE_BACKEND_URL>`
+- Frontend: https://doctor-tracker-frontend-iota.vercel.app
+- Backend: https://doctor-tracker-api-3je6.onrender.com/api/v1/health
 - [Frontend repository](https://github.com/HafijurRahmanBhuiyan/doctor-tracker-frontend)
 - [Root Compose repository](https://github.com/HafijurRahmanBhuiyan/doctor-tracker)
 
