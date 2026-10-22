@@ -4,37 +4,59 @@ import Patient from "../models/Patient";
 import { asyncHandler } from "../utils/asyncHandler";
 import { AppError } from "../utils/AppError";
 import {
+  APP_TIMEZONE,
+  DAY_MS,
   INVERTED_RANGE_MESSAGE,
+  dhakaDayKey,
+  dhakaMonthKey,
+  lastNDhakaMonthKeys,
   resolveDateRange,
-  startOfUtcDay,
+  startOfDhakaDay,
+  startOfDhakaMonth,
 } from "../utils/dateRange";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_RANGE_DAYS = 90;
 
-const isoDay = (d: Date): string => d.toISOString().slice(0, 10);
-const isoMonth = (d: Date): string => d.toISOString().slice(0, 7);
+/** Number of months shown in the "doctors over time" chart. */
+const DOCTORS_OVER_TIME_MONTHS = 6;
 
-// Fill missing days/months with 0 between start and end (bucket keys only, not documents)
+/**
+ * Fills the missing days with 0 (bucket keys only, not documents).
+ *
+ * The series is walked by Asia/Dhaka day keys, so it contains exactly one
+ * entry per Dhaka day between `start` and `end` (both inclusive) without gaps
+ * and without duplicates.
+ */
 const fillDays = (buckets: Map<string, number>, start: Date, end: Date): { date: string; count: number }[] => {
   const out: { date: string; count: number }[] = [];
-  for (let t = start.getTime(); t <= end.getTime(); t += DAY_MS) {
-    const key = isoDay(new Date(t));
-    out.push({ date: key, count: buckets.get(key) || 0 });
+  const endKey = dhakaDayKey(end);
+
+  // A Dhaka day is exactly 24h (no DST), so stepping one day keeps the
+  // buckets aligned with the Dhaka day boundaries.
+  let cursor = startOfDhakaDay(start);
+  while (dhakaDayKey(cursor) <= endKey) {
+    const key = dhakaDayKey(cursor);
+    out.push({ date: key, count: buckets.get(key) ?? 0 });
+    cursor = new Date(cursor.getTime() + DAY_MS);
   }
+
   return out;
 };
 
-const fillMonths = (buckets: Map<string, number>, start: Date, end: Date): { month: string; count: number }[] => {
-  const out: { month: string; count: number }[] = [];
-  const cur = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
-  const endKey = isoMonth(end);
-  while (isoMonth(cur) <= endKey) {
-    const key = isoMonth(cur);
-    out.push({ month: key, count: buckets.get(key) || 0 });
-    cur.setUTCMonth(cur.getUTCMonth() + 1);
-  }
-  return out;
+/**
+ * Fills the missing months with 0 (bucket keys only, not documents).
+ *
+ * `monthKeys` are the Asia/Dhaka month keys of the series and
+ * `currentMonthKey` is the month of "now" in Asia/Dhaka: the series always
+ * ends with it and holds exactly one entry per month.
+ */
+const fillMonths = (
+  buckets: Map<string, number>,
+  monthKeys: string[],
+  currentMonthKey: string
+): { month: string; count: number }[] => {
+  const keys = monthKeys.slice(0, -1).concat(currentMonthKey);
+  return keys.map((month) => ({ month, count: buckets.get(month) ?? 0 }));
 };
 
 export const getDashboardStats = asyncHandler(async (req: Request, res: Response) => {
@@ -45,7 +67,7 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
   let rangeEnd: Date | null = null;
   if (req.query.from || req.query.to) {
     // Date-only `from` / `to` are resolved by the shared helper: `from` is the
-    // start of that UTC day, `to` the end of that UTC day, so records created
+    // start of that Asia/Dhaka day, `to` the end of that Asia/Dhaka day, so records created
     // later that day are still part of the range.
     const range = resolveDateRange(
       req.query.from as string | undefined,
@@ -58,13 +80,19 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
     }
     const minStart = new Date(rangeEnd.getTime() - (MAX_RANGE_DAYS - 1) * DAY_MS);
     if (rangeStart < minStart) rangeStart = minStart;
-    rangeStart = startOfUtcDay(rangeStart);
+    rangeStart = startOfDhakaDay(rangeStart);
   }
 
-  // Fixed windows (UTC-day aligned so bucket sums match the counts exactly)
-  const last30Start = startOfUtcDay(new Date(now.getTime() - 29 * DAY_MS));
-  const last7Start = startOfUtcDay(new Date(now.getTime() - 6 * DAY_MS));
-  const sixMonthsStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5, 1));
+  // Fixed windows (Asia/Dhaka-day aligned so bucket sums match the counts exactly)
+  const last30Start = startOfDhakaDay(new Date(now.getTime() - 29 * DAY_MS));
+  const last7Start = startOfDhakaDay(new Date(now.getTime() - 6 * DAY_MS));
+
+  // Doctors over time: exactly 6 Asia/Dhaka months, the last one being the
+  // current month (e.g. 2026-05 ... 2026-10). The window starts at 00:00
+  // Dhaka time on the 1st of the oldest month of the series.
+  const doctorsMonthKeys = lastNDhakaMonthKeys(now, DOCTORS_OVER_TIME_MONTHS);
+  const currentMonthKey = dhakaMonthKey(now);
+  const sixMonthsStart = startOfDhakaMonth(doctorsMonthKeys[0]);
 
   const patientsOverTimeStart = rangeStart || last30Start;
   const patientsOverTimeEnd = rangeEnd || now;
@@ -117,7 +145,7 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
       },
       {
         $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: "UTC" } },
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: APP_TIMEZONE } },
           count: { $sum: 1 },
         },
       },
@@ -126,7 +154,7 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
       { $match: { createdAt: { $gte: sixMonthsStart } } },
       {
         $group: {
-          _id: { $dateToString: { format: "%Y-%m", date: "$createdAt", timezone: "UTC" } },
+          _id: { $dateToString: { format: "%Y-%m", date: "$createdAt", timezone: APP_TIMEZONE } },
           count: { $sum: 1 },
         },
       },
@@ -168,7 +196,7 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
 
   const doctorsBuckets = new Map<string, number>();
   doctorsOverTimeAgg.forEach((b: any) => doctorsBuckets.set(b._id, b.count));
-  const doctorsOverTime = fillMonths(doctorsBuckets, sixMonthsStart, now);
+  const doctorsOverTime = fillMonths(doctorsBuckets, doctorsMonthKeys, currentMonthKey);
 
   // Top 6 conditions + "Other" bucket
   const topConditions = conditionAgg.slice(0, 6).map((c: any) => ({

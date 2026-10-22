@@ -165,7 +165,8 @@ else
 fi
 
 # ---------- from/to range: single day returns 1 entry ----------
-TODAY=$(date -u +%Y-%m-%d)
+# Today/tomorrow are computed in Asia/Dhaka, the timezone of the API.
+TODAY=$(TZ=Asia/Dhaka date +%Y-%m-%d)
 req GET "$BASE_URL/dashboard/stats?from=$TODAY&to=$TODAY"
 if [ "$HTTP" = "200" ] && jqt '(.data.patientsOverTime | length) == 1'; then
   pass "from=to=today: patientsOverTime has 1 entry"
@@ -182,7 +183,7 @@ else
 fi
 
 # ---------- date-only range: records created NOW are inside from=to=today ----------
-TOMORROW=$(date -u -v+1d +%Y-%m-%d 2>/dev/null || date -u -d '1 day' +%Y-%m-%d 2>/dev/null)
+TOMORROW=$(TZ=Asia/Dhaka date -v+1d +%Y-%m-%d 2>/dev/null || TZ=Asia/Dhaka date -d '1 day' +%Y-%m-%d 2>/dev/null)
 RANGE_DOCTOR_EMAIL="dashboard.range@example.com"
 
 # Sweep leftovers from a previous failed run so the create always succeeds
@@ -201,7 +202,7 @@ else
   fail "setup: create doctor + patient body=$(printf '%.200s' "$BODY")"
 fi
 
-# A date-only `to` means the end of that UTC day, so the patient created now is included
+# A date-only `to` means the end of that Asia/Dhaka day, so the patient created now is included
 req GET "$BASE_URL/dashboard/stats?from=$TODAY&to=$TODAY"
 if [ "$HTTP" = "200" ] && printf '%s' "$BODY" | jq -e --arg day "$TODAY" \
   '(.data.patientsOverTime | length) == 1

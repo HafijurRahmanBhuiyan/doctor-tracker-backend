@@ -142,10 +142,11 @@ else
   fail "date filter from=tomorrow body=$(printf '%.200s' "$BODY")"
 fi
 
-# ---------- Date-only range: `to` must mean the END of that UTC day ----------
+# ---------- Date-only range: `to` must mean the END of that Asia/Dhaka day ----------
 # The smoke doctor is created NOW, so a date-only `to` = today has to include it.
-TODAY=$(date -u +%Y-%m-%d)
-TOMORROW=$(date -u -v+1d +%Y-%m-%d 2>/dev/null || date -u -d '1 day' +%Y-%m-%d 2>/dev/null)
+# Today/tomorrow are computed in Asia/Dhaka, the timezone of the API.
+TODAY=$(TZ=Asia/Dhaka date +%Y-%m-%d)
+TOMORROW=$(TZ=Asia/Dhaka date -v+1d +%Y-%m-%d 2>/dev/null || TZ=Asia/Dhaka date -d '1 day' +%Y-%m-%d 2>/dev/null)
 req GET "$BASE_URL/doctors?from=$TODAY&to=$TODAY&limit=50"
 if [ "$HTTP" = "200" ] && printf '%s' "$BODY" | jq -e --arg id "$DOC_ID" 'any(.data[]; ._id == $id)' > /dev/null 2>&1; then
   pass "date-only from=to=today includes the smoke doctor (end-of-day semantics)"
