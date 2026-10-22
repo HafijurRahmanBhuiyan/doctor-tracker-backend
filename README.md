@@ -65,7 +65,7 @@ Environment variables below come from `src/config/config.ts` and `.env.example`.
 
 ```mermaid
 flowchart LR
-  B[Browser] -->|Pages and protected routes| N[Next.js frontend / proxy]
+  B[Browser] -->|Page requests| N[Next.js frontend / proxy]
   N -->|REST requests with Bearer JWT| E[Express API /api/v1]
   E -->|Mongoose queries and aggregations| M[(MongoDB)]
   E -->|JSON response| N
@@ -134,14 +134,26 @@ With Compose, the three containers share a private Docker network. Only frontend
 
 ### Mobile
 
-![Dashboard at mobile size](docs/screenshots/dashboard-mobile.png)
-*Dashboard (mobile).*
+Mobile views at a 375px viewport:
 
-![Doctors list at mobile size](docs/screenshots/doctors-mobile.png)
-*Doctors list (mobile).*
-
-![Patients list at mobile size](docs/screenshots/patients-mobile.png)
-*Patients list (mobile).*
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/dashboard-mobile.png" alt="Dashboard on a 375px mobile viewport" width="100%">
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/doctors-mobile.png" alt="Doctors list on a 375px mobile viewport" width="100%">
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/patients-mobile.png" alt="Patients list on a 375px mobile viewport" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Dashboard</sub></td>
+    <td align="center"><sub>Doctors</sub></td>
+    <td align="center"><sub>Patients</sub></td>
+  </tr>
+</table>
 
 ## Features
 
